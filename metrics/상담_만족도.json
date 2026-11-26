@@ -1,0 +1,39 @@
+{
+  "id": "consultation_satisfaction",
+  "name": "상담 만족도",
+  "purpose": "월간 보고서에서, 상담을 받고 설문에 응답한 고객 가운데 만족한 고객이 얼마나 되는지 보고한다",
+  "kind": "base",
+  "unit": "%",
+  "elements": {
+    "numerator": "그 달에 접수된 문의 중 설문에 응답했고 csat이 4점 이상인 문의 수",
+    "denominator": "그 달에 접수된 문의 중 설문에 응답한 문의 수",
+    "period": "월 단위. 기준 날짜는 문의 접수일(support_tickets.created_date)",
+    "filter": "없음",
+    "exclusion": "퇴사한 상담원이 응대한 문의는 뺀다",
+    "min_sample": { "value": 300, "reason": "채널별로 나눠 볼 때 응답 몇십 건 차이로 비율이 흔들리지 않게" }
+  },
+  "sql": "SELECT COUNT(CASE WHEN s.csat >= 4 THEN 1 END) AS numerator, COUNT(*) AS denominator FROM support_tickets t JOIN csat_survey s ON s.ticket_id = t.ticket_id WHERE t.created_date BETWEEN DATE '{month_start}' AND DATE '{month_end}' AND t.agent_id NOT IN (SELECT agent_id FROM agents WHERE is_resigned)",
+  "sources": [
+    "support_tickets.ticket_id",
+    "support_tickets.created_date",
+    "support_tickets.agent_id",
+    "csat_survey.ticket_id",
+    "csat_survey.csat",
+    "agents.agent_id",
+    "agents.is_resigned"
+  ],
+  "rejected": [
+    {
+      "name": "분모를 그 달에 접수된 전체 문의로 한 것",
+      "sql": "SELECT COUNT(CASE WHEN s.csat >= 4 THEN 1 END) AS numerator, COUNT(*) AS denominator FROM support_tickets t LEFT JOIN csat_survey s ON s.ticket_id = t.ticket_id WHERE t.created_date BETWEEN DATE '{month_start}' AND DATE '{month_end}' AND t.agent_id NOT IN (SELECT agent_id FROM agents WHERE is_resigned)",
+      "reason": "설문에 응답하지 않은 문의까지 분모에 들어가, 응답하지 않은 것이 불만족으로 계산된다"
+    },
+    {
+      "name": "분자를 5점만으로 한 것",
+      "sql": "SELECT COUNT(CASE WHEN s.csat = 5 THEN 1 END) AS numerator, COUNT(*) AS denominator FROM support_tickets t JOIN csat_survey s ON s.ticket_id = t.ticket_id WHERE t.created_date BETWEEN DATE '{month_start}' AND DATE '{month_end}' AND t.agent_id NOT IN (SELECT agent_id FROM agents WHERE is_resigned)",
+      "reason": "4점을 준 응답까지 만족하지 않은 것으로 센다"
+    }
+  ],
+  "unanswerable": "설문에 응답하지 않은 고객의 만족도",
+  "decision": null
+}
