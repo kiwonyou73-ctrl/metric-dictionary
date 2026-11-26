@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>상담 만족도 ERD</title>
+<style>
+  :root { --bg:#ffffff; --fg:#1f2328; --muted:#59636e; --line:#d0d7de; --head:#f6f8fa; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0d1117; --fg:#e6edf3; --muted:#9198a1; --line:#30363d; --head:#161b22; }
+  }
+  body { margin:0; padding:24px 16px 48px; background:var(--bg); color:var(--fg);
+         font-family:"Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif; line-height:1.6; }
+  main { max-width:960px; margin:0 auto; }
+  h1 { font-size:1.4rem; margin:0 0 4px; }
+  p.lead { color:var(--muted); margin:0 0 20px; }
+  .diagram { background:#ffffff; border:1px solid var(--line); border-radius:8px; padding:16px; overflow-x:auto; }
+  h2 { font-size:1.1rem; margin:28px 0 8px; }
+  table { border-collapse:collapse; width:100%; }
+  th, td { border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+  th { background:var(--head); }
+  td:first-child { white-space:nowrap; font-weight:bold; }
+</style>
+</head>
+<body>
+<main>
+  <h1>상담 만족도 ERD</h1>
+  <p class="lead">csat_survey · support_tickets · agents · customers — 키와 상담 만족도에 쓰는 컬럼만 표시</p>
+
+  <div class="diagram">
+<pre class="mermaid">
+erDiagram
+    customers ||--o{ support_tickets : "고객 1명이 문의 여러 건"
+    agents ||--o{ support_tickets : "상담원 1명이 문의 여러 건"
+    support_tickets ||--o| csat_survey : "문의 1건에 설문 0~1건"
+    customers ||--o{ csat_survey : "고객 1명이 설문 여러 건"
+
+    customers {
+        string customer_id PK "고객 ID"
+        string plan_type "요금제"
+    }
+    agents {
+        string agent_id PK "상담원 ID"
+        string team "소속 팀"
+    }
+    support_tickets {
+        string ticket_id PK "문의 ID"
+        string customer_id FK "문의한 고객"
+        string agent_id FK "담당 상담원"
+        date created_date "문의 접수일"
+    }
+    csat_survey {
+        string survey_id PK "설문 ID"
+        string ticket_id FK "설문 대상 문의"
+        string customer_id FK "응답 고객"
+        date survey_date "설문일"
+        int csat "상담 만족도 점수(1~5)"
+    }
+</pre>
+  </div>
+
+  <h2>테이블마다 한 행이 뜻하는 것</h2>
+  <table>
+    <thead><tr><th>테이블</th><th>한 행 =</th></tr></thead>
+    <tbody>
+      <tr><td>csat_survey</td><td>상담 문의 1건에 대해 고객이 남긴 만족도 설문 응답 1건 (문의 1건당 최대 1건)</td></tr>
+      <tr><td>support_tickets</td><td>고객이 접수해 상담원 1명이 맡은 상담 문의 1건</td></tr>
+      <tr><td>agents</td><td>상담원 1명</td></tr>
+      <tr><td>customers</td><td>고객 1명</td></tr>
+    </tbody>
+  </table>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: "default", securityLevel: "strict",
+                       themeVariables: { fontFamily: '"Malgun Gothic","Apple SD Gothic Neo",sans-serif' } });
+</script>
+</body>
+</html>

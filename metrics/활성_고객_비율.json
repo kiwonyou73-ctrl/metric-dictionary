@@ -1,0 +1,41 @@
+{
+  "id": "active_customer_rate",
+  "name": "활성 고객 비율",
+  "purpose": "월간 운영 보고서에서 서비스를 실제로 쓰는 고객이 얼마나 되는지 보고한다",
+  "kind": "base",
+  "unit": "%",
+  "elements": {
+    "numerator": "그 달 앱 로그인이 8회 이상인 고객 수",
+    "denominator": "그 달 마지막 날에 가입 상태인 고객 (월말 유지 고객)",
+    "period": "월 단위",
+    "filter": "없음(전체)",
+    "exclusion": "없음 (월말 유지 고객만 보므로 그 달 해지 고객은 저절로 빠진다)",
+    "min_sample": { "value": 1000, "reason": "요금제별로 나눌 때 몇십 명 차이로 비율이 흔들리지 않게" }
+  },
+  "sql": "WITH d AS (SELECT customer_id FROM customers WHERE signup_date <= DATE '{month_end}' AND (NOT is_churned OR churn_date > DATE '{month_end}')) SELECT COUNT(CASE WHEN u.app_login_count >= 8 THEN 1 END) AS numerator, COUNT(*) AS denominator FROM d LEFT JOIN usage_monthly u ON u.customer_id = d.customer_id AND u.year_month = '{month}'",
+  "sources": [
+    "customers.signup_date",
+    "customers.is_churned",
+    "customers.churn_date",
+    "usage_monthly.app_login_count"
+  ],
+  "rejected": [
+    {
+      "name": "그 달에 청구가 있는 고객",
+      "sql": "WITH d AS (SELECT customer_id FROM customers WHERE signup_date <= DATE '{month_end}' AND (NOT is_churned OR churn_date > DATE '{month_end}')) SELECT COUNT(CASE WHEN u.billing_amount > 0 THEN 1 END) AS numerator, COUNT(*) AS denominator FROM d LEFT JOIN usage_monthly u ON u.customer_id = d.customer_id AND u.year_month = '{month}'",
+      "reason": "그 달 중간에 해지한 고객까지 센다"
+    },
+    {
+      "name": "데이터 사용 5GB 이상",
+      "sql": "WITH d AS (SELECT customer_id FROM customers WHERE signup_date <= DATE '{month_end}' AND (NOT is_churned OR churn_date > DATE '{month_end}')) SELECT COUNT(CASE WHEN u.data_gb >= 5 THEN 1 END) AS numerator, COUNT(*) AS denominator FROM d LEFT JOIN usage_monthly u ON u.customer_id = d.customer_id AND u.year_month = '{month}'",
+      "reason": "사용량 구간별 해지율이 4~5%로 평평해서 해지와 관계가 없다"
+    },
+    {
+      "name": "로그인 11회 이상",
+      "sql": "WITH d AS (SELECT customer_id FROM customers WHERE signup_date <= DATE '{month_end}' AND (NOT is_churned OR churn_date > DATE '{month_end}')) SELECT COUNT(CASE WHEN u.app_login_count >= 11 THEN 1 END) AS numerator, COUNT(*) AS denominator FROM d LEFT JOIN usage_monthly u ON u.customer_id = d.customer_id AND u.year_month = '{month}'",
+      "reason": "비활성이 전체의 20%로 커져 월간 보고서 숫자가 크게 흔들린다"
+    }
+  ],
+  "unanswerable": "로그인이 줄어서 해지하는 것인지, 해지할 사람이 로그인을 줄이는 것인지",
+  "decision": null
+}

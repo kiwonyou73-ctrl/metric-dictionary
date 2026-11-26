@@ -1,0 +1,29 @@
+{
+  "id": "revenue_per_customer",
+  "name": "고객당 매출",
+  "purpose": "고객 한 명당 그 달에 청구한 금액이 얼마인지 보고한다",
+  "kind": "derived",
+  "unit": "원",
+  "inputs": { "a": "monthly_billing_total", "b": "month_end_retained_customers" },
+  "formula": "a / b",
+  "elements": {
+    "numerator": "월 청구 합계 (monthly_billing_total)",
+    "denominator": "월말 유지 고객 수 (month_end_retained_customers)",
+    "period": "월 단위",
+    "filter": "두 입력 정의서(월 청구 합계 · 월말 유지 고객 수)를 따른다",
+    "exclusion": "두 입력 정의서(월 청구 합계 · 월말 유지 고객 수)를 따른다",
+    "min_sample": { "value": null, "reason": "두 입력 정의서(월 청구 합계 · 월말 유지 고객 수)를 따른다" }
+  },
+  "rejected": [
+    {
+      "name": "분모를 그 달에 청구가 있는 고객 수로 한 것",
+      "reason": "그 달 중간에 해지한 고객까지 센다"
+    },
+    {
+      "name": "분모를 가입 고객 전체 수로 한 것",
+      "reason": "그 달 말일에 가입 상태가 아닌 고객(이미 해지했거나 아직 가입 전)까지 센다"
+    }
+  ],
+  "unanswerable": null,
+  "decision": null
+}
