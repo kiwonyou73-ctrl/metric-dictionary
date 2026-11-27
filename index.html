@@ -24,11 +24,16 @@
   </header>
 
   <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="cards" aria-selected="true">지표 카드</button>
+    <button role="tab" data-tab="dashboard" aria-selected="true">대시보드</button>
+    <button role="tab" data-tab="cards" aria-selected="false">지표 카드</button>
     <button role="tab" data-tab="lineage" aria-selected="false">계보</button>
   </nav>
 
-  <section id="tab-cards" class="panel">
+  <section id="tab-dashboard" class="panel">
+    <div id="dashboard"></div>
+  </section>
+
+  <section id="tab-cards" class="panel" hidden>
     <div id="cards"></div>
   </section>
 

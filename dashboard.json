@@ -1,0 +1,12 @@
+{
+  "top": [
+    "month_end_retained_customers",
+    "monthly_billing_total",
+    "active_customer_rate",
+    "consultation_satisfaction"
+  ],
+  "trend": [
+    "new_customers",
+    "revenue_per_customer"
+  ]
+}

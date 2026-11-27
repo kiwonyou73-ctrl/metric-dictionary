@@ -18,6 +18,7 @@ python -m http.server 8000
 |---|---|
 | `metrics/*.json` | ★ **정의서** — 여섯 요소(분자 · 분모 · 기간 · 거르기 · 제외 · 최소 표본), 계산 SQL, 출처(계보), 버린 정의와 이유. **사람이 정한다** |
 | `metrics/index.json` | 카드로 보여 줄 정의서 파일 이름 목록. 정의서를 새로 만들면 여기에도 한 줄 더한다 |
+| `dashboard.json` | **대시보드 탭의 배치** — `top`(위에 크게)과 `trend`(월별 추이)에 지표 id만 적는다. 숫자는 카드와 같은 계산을 읽고, SQL은 없다 |
 | `app.js` · `index.html` · `style.css` | 화면. 지표 이름도 «무엇을 셀지»도 들어 있지 않다 |
 | `data/*.parquet` · `schema.json` | 통신사 가상 데이터 12개 테이블(4주차와 같은 데이터)과 테이블 설명 |
 | `tools/duckdb_mcp.py` · `.mcp.json` | Claude Code가 이 폴더의 데이터에 직접 SQL을 돌리는 연결 (읽기 전용) |

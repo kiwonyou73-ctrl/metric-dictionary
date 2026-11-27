@@ -11,6 +11,9 @@
  *   rejected  버린 정의 — 이름 · SQL · 버린 이유. 같은 달 숫자를 나란히 보여 준다
  *   inputs · formula   derived 일 때: 다른 지표의 id 와 계산식 (예: a / b)
  *
+ * 대시보드 탭은 dashboard.json 에 적힌 지표 id 로 «어디에 둘지»만 정한다(top 큰 숫자 · trend 월별 추이).
+ * 숫자는 카드와 같은 계산(seriesOf)을 그대로 읽고, 대시보드에는 SQL이 없다.
+ *
  * DuckDB-WASM 이 브라우저 안에서 parquet 을 읽는다. 실행하는 SQL은 전부 «읽기 전용» 검사를 거친다.
  */
 import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.32.0/+esm";
@@ -18,7 +21,7 @@ import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.32.0
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const MONTHS = Array.from({ length: 12 }, (_, i) => `2025-${String(i + 1).padStart(2, "0")}`);
-const S = { db: null, conn: null, loaded: new Set(), schema: null, metrics: [], byId: {}, series: {}, month: "2025-12" };
+const S = { db: null, conn: null, loaded: new Set(), schema: null, metrics: [], byId: {}, series: {}, month: "2025-12", computed: new Set(), dash: null };
 
 // ── 엔진 ─────────────────────────────────────────────
 async function startEngine() {
@@ -197,12 +200,15 @@ function spark(s) {
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline points="${pts}"/>${cv == null ? "" : `<circle cx="${x(cur).toFixed(1)}" cy="${y(cv).toFixed(1)}" r="2.6"/>`}</svg>`;
 }
 
-function chart(m, s) {
+// solo=true: 대시보드용 — 채택한 정의 한 줄만, 값 범위에 맞춰 세로 눈금을 잡는다
+function chart(m, s, solo = false) {
   const lines = [{ name: "채택한 정의", cls: "l0", vals: MONTHS.map(mo => s.months[mo]?.value) },
-    ...s.rej.map((r, i) => ({ name: r.name, cls: `l${i + 1}`, vals: MONTHS.map(mo => r.months[mo]) }))];
-  if (lines.length < 2) return "";
+    ...(solo ? [] : s.rej.map((r, i) => ({ name: r.name, cls: `l${i + 1}`, vals: MONTHS.map(mo => r.months[mo]) })))];
+  if (!solo && lines.length < 2) return "";
   const all = lines.flatMap(l => l.vals).filter(v => v != null);
-  const hi = Math.max(...all, 0), lo = Math.min(...all, 0);
+  if (!all.length) return "";
+  const pad = solo ? ((Math.max(...all) - Math.min(...all)) || Math.abs(all[0]) || 1) * 0.1 : 0;
+  const hi = solo ? Math.max(...all) + pad : Math.max(...all, 0), lo = solo ? Math.min(...all) - pad : Math.min(...all, 0);
   const W = 640, H = 190, L = 56, R = 12, T = 12, B = 26;
   const x = i => L + (i / 11) * (W - L - R), y = v => T + (1 - (v - lo) / ((hi - lo) || 1)) * (H - T - B);
   const cur = MONTHS.indexOf(S.month);
@@ -213,18 +219,23 @@ function chart(m, s) {
     const cv = l.vals[cur];
     return `<polyline class="ln ${l.cls}" points="${pts}"/>${cv == null ? "" : `<circle class="dot ${l.cls}" cx="${x(cur)}" cy="${y(cv)}" r="4"/>`}`;
   }).join("");
-  const legend = lines.map(l => `<span class="lg"><i class="sw ${l.cls}"></i>${esc(l.name)}</span>`).join("");
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="월별 값 — 채택한 정의와 버린 정의">${grid}${xs}<line class="cur" x1="${x(cur)}" x2="${x(cur)}" y1="${T}" y2="${H - B}"/>${paths}</svg><div class="legend">${legend}</div>`;
+  const legend = solo ? "" : `<div class="legend">${lines.map(l => `<span class="lg"><i class="sw ${l.cls}"></i>${esc(l.name)}</span>`).join("")}</div>`;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${solo ? `${esc(m.name)} 월별 추이` : "월별 값 — 채택한 정의와 버린 정의"}">${grid}${xs}<line class="cur" x1="${x(cur)}" x2="${x(cur)}" y1="${T}" y2="${H - B}"/>${paths}</svg>${legend}`;
+}
+
+// 기준월의 값 표시 — 카드와 대시보드가 함께 쓴다
+function valueHtml(m, s) {
+  const cur = s?.months[S.month];
+  if (s?.error) return `<span class="v none">계산 못 함</span>`;
+  if (cur?.hidden) return `<span class="v none">표시 안 함</span><span class="sub">분모 ${cur.den?.toLocaleString("ko-KR")} — 최소 표본 ${m.elements.min_sample.value.toLocaleString("ko-KR")} 미만</span>`;
+  return `<span class="v">${fmt(cur?.value, m)}<small>${esc(unitOf(m))}</small></span>${cur?.den != null ? `<span class="sub">${cur.num.toLocaleString("ko-KR")} ÷ ${cur.den.toLocaleString("ko-KR")}</span>` : ""}`;
 }
 
 function cardHtml(m) {
   const s = S.series[m.id];
   const probs = problems(m);
   const cur = s?.months[S.month];
-  let value;
-  if (s?.error) value = `<span class="v none">계산 못 함</span>`;
-  else if (cur?.hidden) value = `<span class="v none">표시 안 함</span><span class="sub">분모 ${cur.den?.toLocaleString("ko-KR")} — 최소 표본 ${m.elements.min_sample.value.toLocaleString("ko-KR")} 미만</span>`;
-  else value = `<span class="v">${fmt(cur?.value, m)}<small>${esc(unitOf(m))}</small></span>${cur?.den != null ? `<span class="sub">${cur.num.toLocaleString("ko-KR")} ÷ ${cur.den.toLocaleString("ko-KR")}</span>` : ""}`;
+  const value = valueHtml(m, s);
   const pill = s?.error ? `<span class="pill warn">계산 오류</span>` : probs.length ? `<span class="pill warn">정의 미완성 ${probs.length}</span>` : `<span class="pill ok">정의서 완성</span>`;
 
   const e = m.elements || {};
@@ -284,6 +295,64 @@ function renderCards() {
   document.querySelectorAll(".mcard").forEach(d => { if (open.has(d.dataset.id)) d.open = true; });
 }
 
+// ── 대시보드 ─────────────────────────────────────────────
+// dashboard.json: { "top": [지표 id…], "trend": [지표 id…] } — id 만 적는다. 숫자는 카드와 같은 S.series 를 읽는다.
+async function loadDashboard() {
+  try {
+    const j = await (await fetch("dashboard.json")).json();
+    const ids = k => Array.isArray(j[k]) ? j[k].map(String) : [];
+    S.dash = { top: ids("top"), trend: ids("trend") };
+  } catch (err) {
+    S.dash = { top: [], trend: [], error: `dashboard.json 을 읽지 못했습니다: ${err.message}` };
+  }
+}
+
+// 전월 대비: 비율(%) 지표는 %p 차이, 나머지는 증감률(%)
+function deltaHtml(m, s) {
+  const i = MONTHS.indexOf(S.month);
+  const cur = s?.months[MONTHS[i]]?.value, prev = i > 0 ? s?.months[MONTHS[i - 1]]?.value : null;
+  if (s?.error || cur == null || prev == null) return `<span class="delta none">전월 대비 —</span>`;
+  const pts = unitOf(m) === "%";
+  const d = pts ? cur - prev : (prev === 0 ? null : (cur - prev) / Math.abs(prev) * 100);
+  if (d == null) return `<span class="delta none">전월 대비 —</span>`;
+  const txt = `${d > 0 ? "▲ " : d < 0 ? "▼ " : ""}${Math.abs(d).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}${pts ? "%p" : "%"}`;
+  return `<span class="delta ${d > 0 ? "up" : d < 0 ? "down" : ""}">전월 대비 ${txt}</span>`;
+}
+
+function dashHead(m) {
+  return `<div class="dh"><b>${esc(m.name)}</b><button type="button" class="mid" data-goto="${esc(m.id)}" title="지표 카드 탭에서 정의서 보기">${esc(m.id)}</button></div>`;
+}
+
+function dashItem(id, kind) {
+  const m = S.byId[id];
+  if (!m) return `<div class="tile miss"><div class="dh"><b>정의서 없음</b><code>${esc(id)}</code></div><p class="small muted">dashboard.json 에 적힌 id 가 metrics/ 정의서에 없습니다.</p></div>`;
+  if (!S.computed.has(id)) return `<div class="${kind}">${dashHead(m)}<p class="small muted">계산 중…</p></div>`;
+  const s = S.series[id];
+  const body = kind === "tile"
+    ? `<div class="val">${valueHtml(m, s)}</div>${deltaHtml(m, s)}`
+    : `<div class="trendtop"><span class="val">${valueHtml(m, s)}</span>${deltaHtml(m, s)}</div>${s.error ? "" : chart(m, s, true)}`;
+  return `<div class="${kind}">${dashHead(m)}${body}</div>`;
+}
+
+function renderDashboard() {
+  const d = S.dash;
+  if (!d) return;
+  const none = !d.top.length && !d.trend.length;
+  $("#dashboard").innerHTML = `${d.error ? `<div class="alert"><b>${esc(d.error)}</b></div>` : ""}
+    <p class="small muted dnote">기준월 <b>${esc(S.month)}</b> · 지표 아래 id 는 정의서 이름이며, 누르면 지표 카드에서 정의를 볼 수 있습니다.</p>
+    ${none && !d.error ? `<p class="muted">dashboard.json 에 지표 id 가 없습니다.</p>` : ""}
+    ${d.top.length ? `<div class="tiles">${d.top.map(id => dashItem(id, "tile")).join("")}</div>` : ""}
+    ${d.trend.length ? `<h3 class="dtitle">월별 추이</h3><div class="trends">${d.trend.map(id => dashItem(id, "trend")).join("")}</div>` : ""}`;
+}
+
+$("#dashboard").addEventListener("click", e => {
+  const b = e.target.closest("[data-goto]");
+  if (!b) return;
+  showTab("cards");
+  const card = document.querySelector(`.mcard[data-id="${CSS.escape(b.dataset.goto)}"]`);
+  if (card) { card.open = true; card.scrollIntoView({ block: "start" }); }
+});
+
 // ── 계보 ─────────────────────────────────────────────
 function renderLineage() {
   const base = S.metrics.filter(m => m.kind !== "derived");
@@ -312,26 +381,30 @@ function renderLineage() {
 }
 
 // ── 시작 ─────────────────────────────────────────────
-document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
-  document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", String(x === b)));
-  $("#tab-cards").hidden = b.dataset.tab !== "cards";
-  $("#tab-lineage").hidden = b.dataset.tab !== "lineage";
-}));
+function showTab(name) {
+  document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", String(x.dataset.tab === name)));
+  for (const t of ["dashboard", "cards", "lineage"]) $(`#tab-${t}`).hidden = t !== name;
+}
+document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
 $("#month").innerHTML = MONTHS.map(m => `<option value="${m}"${m === S.month ? " selected" : ""}>${m}</option>`).join("");
-$("#month").addEventListener("change", e => { S.month = e.target.value; renderCards(); });
+$("#month").addEventListener("change", e => { S.month = e.target.value; renderCards(); renderDashboard(); });
 
 (async () => {
   try {
     S.schema = await (await fetch("schema.json")).json();
     await loadMetrics();
+    await loadDashboard();
     renderCards();
+    renderDashboard();
     $("#engine").textContent = "데이터 엔진 준비 중…";
     await startEngine();
     let done = 0;
     for (const m of S.metrics) {
       $("#engine").textContent = `계산 중 — ${m.name} (${++done}/${S.metrics.length})`;
       await seriesOf(m.id);
+      S.computed.add(m.id);
       renderCards();
+      renderDashboard();
     }
     renderLineage();
     $("#engine").textContent = `준비됨 · 지표 ${S.metrics.length}개 · 불러온 테이블 ${S.loaded.size}개`;
